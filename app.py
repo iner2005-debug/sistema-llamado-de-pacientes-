@@ -1,6 +1,5 @@
-import io
 import streamlit as st
-from gtts import gTTS
+import streamlit.components.v1 as components
 
 # --- Configuración de página ---
 st.set_page_config(
@@ -16,42 +15,51 @@ if "voice_call_count" not in st.session_state:
     st.session_state.voice_call_count = 0
 if "patient_call_count" not in st.session_state:
     st.session_state.patient_call_count = 0
-if "audio_bytes" not in st.session_state:
-    st.session_state.audio_bytes = None
 if "last_action_msg" not in st.session_state:
     st.session_state.last_action_msg = ""
+if "speak_trigger" not in st.session_state:
+    st.session_state.speak_trigger = None
 
-# --- Función TTS Sólida y Estable (gTTS con acentos latinos) ---
-def generate_patient_voice(name, office_num, call_number, voice_type="female"):
+# --- Función para reproducir voz en Español Latino / Colombiano usando Web Speech API ---
+def play_web_speech(text, lang="es-CO"):
     """
-    Genera el audio en MP3 de manera estable usando gTTS.
-    Alterna acentos latinos para simular distintas voces:
-    - Femenina: 'es' (Español estándar latino)
-    - Masculina: 'com.mx' (Español México / Latino)
-    Añade 'Último llamado' a partir del 3er intento.
+    Genera un componente HTML/JS que ejecuta la síntesis de voz nativa 
+    del navegador configurada en español de Colombia ('es-CO') o Latinoamérica ('es-419').
     """
-    if call_number >= 3:
-        text = f"Último llamado. Paciente {name}, por favor acérquese al consultorio número {office_num}."
-    else:
-        text = f"Paciente {name}, por favor acérquese al consultorio número {office_num}."
-    
-    # Alternar TLD para variar la voz de forma totalmente segura
-    tld = 'com.mx' if voice_type == "male" else 'es'
-    
-    try:
-        tts = gTTS(text=text, lang='es', tld=tld)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        return fp.read()
-    except Exception as e:
-        st.error(f"Error generando audio: {e}")
-        return None
+    js_code = f"""
+    <script>
+        function speak() {{
+            if ('speechSynthesis' in window) {{
+                window.speechSynthesis.cancel(); // Cancelar audios anteriores
+                var msg = new SpeechSynthesisUtterance("{text}");
+                msg.lang = '{lang}';
+                msg.rate = 0.95; // Velocidad de lectura
+                msg.pitch = 1.0;
+                
+                // Buscar voz colombiana o latina si está disponible en el dispositivo
+                var voices = window.speechSynthesis.getVoices();
+                var selectedVoice = voices.find(function(voice) {{
+                    return voice.lang === 'es-CO' || voice.lang === 'es-419' || voice.lang.includes('es');
+                }});
+                if (selectedVoice) {{
+                    msg.voice = selectedVoice;
+                }}
+                
+                window.speechSynthesis.speak(msg);
+            }} else {{
+                alert('Tu navegador no soporta síntesis de voz.');
+            }}
+        }}
+        // Ejecutar inmediatamente
+        setTimeout(speak, 200);
+    </script>
+    """
+    components.html(js_code, height=0, width=0)
 
 # --- Interfaz de Usuario ---
 st.title("🏥 Sistema de Llamado")
 
-# Panel lateral de configuración / carga
+# Panel lateral de configuración
 with st.sidebar:
     st.header("⚙️ Configuración")
     office_number = st.text_input("Consultorio Nº:", value="2")
@@ -67,7 +75,7 @@ with st.sidebar:
             st.session_state.patient_queue = names
             st.session_state.voice_call_count = 0
             st.session_state.patient_call_count = 0
-            st.session_state.audio_bytes = None
+            st.session_state.speak_trigger = None
             st.session_state.last_action_msg = f"✅ Lista cargada ({len(names)} pacientes)."
         else:
             st.session_state.patient_queue = []
@@ -87,28 +95,24 @@ if st.session_state.patient_queue:
     call_num_display = st.session_state.patient_call_count
     st.caption(f"Veces llamado: **{call_num_display}** | Pacientes restantes en fila: **{len(st.session_state.patient_queue)}**")
 
-    # Botones dispuestas verticalmente para asegurar compatibilidad móvil
+    # Botones principales
     if st.button("📢 Llamar Paciente Actual", type="primary", use_container_width=True):
         st.session_state.patient_call_count += 1
-        voice_type = "female" if st.session_state.voice_call_count % 2 == 0 else "male"
         
-        audio = generate_patient_voice(
-            current_patient, 
-            office_number, 
-            st.session_state.patient_call_count,
-            voice_type
-        )
-        
-        if audio:
-            st.session_state.audio_bytes = audio
-            st.session_state.voice_call_count += 1
-            tag = " (ÚLTIMO LLAMADO)" if st.session_state.patient_call_count >= 3 else ""
-            st.session_state.last_action_msg = f"Llamando a {current_patient}{tag} - Llamado #{st.session_state.patient_call_count}"
+        if st.session_state.patient_call_count >= 3:
+            text_to_say = f"Último llamado. Paciente {current_patient}, por favor acérquese al consultorio número {office_number}."
+            tag = " (ÚLTIMO LLAMADO)"
+        else:
+            text_to_say = f"Paciente {current_patient}, por favor acérquese al consultorio número {office_number}."
+            tag = ""
+            
+        st.session_state.speak_trigger = text_to_say
+        st.session_state.last_action_msg = f"Llamando a {current_patient}{tag} - Llamado #{st.session_state.patient_call_count}"
 
     if st.button("➡️ Siguiente Paciente en Fila", type="secondary", use_container_width=True):
         completed_patient = st.session_state.patient_queue.pop(0)
         st.session_state.patient_call_count = 0
-        st.session_state.audio_bytes = None
+        st.session_state.speak_trigger = None
         
         if st.session_state.patient_queue:
             st.session_state.last_action_msg = f"Atendido: {completed_patient}. Siguiente: {st.session_state.patient_queue[0]}"
@@ -116,9 +120,9 @@ if st.session_state.patient_queue:
             st.session_state.last_action_msg = "🎉 Todos los pacientes han sido llamados."
         st.rerun()
 
-    # Reproducción de audio
-    if st.session_state.audio_bytes:
-        st.audio(st.session_state.audio_bytes, format="audio/mp3", autoplay=True)
+    # Reproducción de voz nativa del dispositivo/navegador
+    if st.session_state.speak_trigger:
+        play_web_speech(st.session_state.speak_trigger, lang="es-CO")
 
 else:
     st.warning("No hay pacientes en la cola. Carga una lista desde el menú lateral para iniciar.")
