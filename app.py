@@ -1,6 +1,6 @@
-import io
+import asyncio
 import streamlit as st
-from gtts import gTTS
+import edge_tts
 
 # --- Configuración de página ---
 st.set_page_config(page_title="Sistema de Llamado de Pacientes", page_icon="🏥", layout="centered")
@@ -9,37 +9,44 @@ st.set_page_config(page_title="Sistema de Llamado de Pacientes", page_icon="🏥
 if "patient_queue" not in st.session_state:
     st.session_state.patient_queue = []
 if "voice_call_count" not in st.session_state:
-    st.session_state.voice_call_count = 0  # Para alternar género de voz
+    st.session_state.voice_call_count = 0
 if "patient_call_count" not in st.session_state:
-    st.session_state.patient_call_count = 0  # Contador de llamados del paciente actual
+    st.session_state.patient_call_count = 0
 if "audio_bytes" not in st.session_state:
     st.session_state.audio_bytes = None
 if "last_action_msg" not in st.session_state:
     st.session_state.last_action_msg = ""
 
-# --- Función para generar audio TTS con acento colombiano ---
-def generate_patient_voice(name, office_num, call_number):
+# --- Función Asíncrona para generar audio con Edge-TTS (Acento Colombiano) ---
+async def generate_voice_async(text, voice):
+    communicate = edge_tts.Communicate(text, voice)
+    audio_data = b""
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_data += chunk["data"]
+    return audio_data
+
+def generate_patient_voice(name, office_num, call_number, voice_type="female"):
     """
-    Genera audio usando gTTS con tld 'com.co' para acento latino/colombiano.
-    Añade 'último llamado' a partir de la 3ra vez que se llama al mismo paciente.
+    Genera audio sintético usando voces neuronales colombianas de Microsoft Edge.
+    - Femenina: es-CO-SalmeNeural
+    - Masculina: es-CO-GonzaloNeural
     """
     if call_number >= 3:
         text = f"Último llamado. Paciente {name}, por favor acérquese al consultorio número {office_num}."
     else:
         text = f"Paciente {name}, por favor acérquese al consultorio número {office_num}."
     
-    # tld='com.co' asigna la locución en español latino con modulación colombiana
-    tts = gTTS(text, lang='es', tld='com.co')
+    # Selección de voz colombiana neuronal
+    voice = "es-CO-SalmeNeural" if voice_type == "female" else "es-CO-GonzaloNeural"
     
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    fp.seek(0)
-    return fp.read()
+    # Ejecutar la función asíncrona dentro del flujo síncrono de Streamlit
+    return asyncio.run(generate_voice_async(text, voice))
 
 # --- Interfaz de Usuario ---
 st.title("🏥 Sistema de Llamado de Pacientes")
 
-# Panel lateral de configuración / carga
+# Panel lateral
 with st.sidebar:
     st.header("⚙️ Configuración")
     office_number = st.text_input("Consultorio Nº:", value="2")
@@ -82,19 +89,25 @@ if st.session_state.patient_queue:
     with col1:
         if st.button("📢 Llamar Paciente Actual", use_container_width=True):
             st.session_state.patient_call_count += 1
+            
+            # Alternar entre voz femenina y masculina colombiana
+            voice_type = "female" if st.session_state.voice_call_count % 2 == 0 else "male"
+            
             st.session_state.audio_bytes = generate_patient_voice(
                 current_patient, 
                 office_number, 
-                st.session_state.patient_call_count
+                st.session_state.patient_call_count,
+                voice_type
             )
             
+            st.session_state.voice_call_count += 1
             tag = " (ÚLTIMO LLAMADO)" if st.session_state.patient_call_count >= 3 else ""
-            st.session_state.last_action_msg = f"Llamando a {current_patient}{tag} - Llamado #{st.session_state.patient_call_count}"
+            st.session_state.last_action_msg = f"Llamando a {current_patient}{tag} - Llamado #{st.session_state.patient_call_count} (Voz: {voice_type})"
 
     with col2:
         if st.button("➡️ Siguiente Paciente en Fila", type="secondary", use_container_width=True):
             completed_patient = st.session_state.patient_queue.pop(0)
-            st.session_state.patient_call_count = 0  # Reiniciar contador para el nuevo paciente
+            st.session_state.patient_call_count = 0
             st.session_state.audio_bytes = None
             
             if st.session_state.patient_queue:
