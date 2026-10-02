@@ -9,17 +9,27 @@ st.set_page_config(page_title="Sistema de Llamado de Pacientes", page_icon="🏥
 if "patient_queue" not in st.session_state:
     st.session_state.patient_queue = []
 if "voice_call_count" not in st.session_state:
-    st.session_state.voice_call_count = 0
+    st.session_state.voice_call_count = 0  # Para alternar género de voz
+if "patient_call_count" not in st.session_state:
+    st.session_state.patient_call_count = 0  # Contador de llamados del paciente actual
 if "audio_bytes" not in st.session_state:
     st.session_state.audio_bytes = None
 if "last_action_msg" not in st.session_state:
     st.session_state.last_action_msg = ""
 
-# --- Función para generar audio TTS ---
-def generate_patient_voice(name, office_num, voice_type="female"):
-    text = f"Paciente {name}, por favor acérquese al consultorio número {office_num}."
-    tld = 'com.mx' if voice_type == "male" else 'es'
-    tts = gTTS(text, lang='es', tld=tld)
+# --- Función para generar audio TTS con acento colombiano ---
+def generate_patient_voice(name, office_num, call_number):
+    """
+    Genera audio usando gTTS con tld 'com.co' para acento latino/colombiano.
+    Añade 'último llamado' a partir de la 3ra vez que se llama al mismo paciente.
+    """
+    if call_number >= 3:
+        text = f"Último llamado. Paciente {name}, por favor acérquese al consultorio número {office_num}."
+    else:
+        text = f"Paciente {name}, por favor acérquese al consultorio número {office_num}."
+    
+    # tld='com.co' asigna la locución en español latino con modulación colombiana
+    tts = gTTS(text, lang='es', tld='com.co')
     
     fp = io.BytesIO()
     tts.write_to_fp(fp)
@@ -44,6 +54,7 @@ with st.sidebar:
         if names:
             st.session_state.patient_queue = names
             st.session_state.voice_call_count = 0
+            st.session_state.patient_call_count = 0
             st.session_state.audio_bytes = None
             st.session_state.last_action_msg = f"✅ Lista cargada ({len(names)} pacientes)."
         else:
@@ -59,21 +70,31 @@ if st.session_state.patient_queue:
     
     st.markdown("### 👤 Paciente en Turno")
     st.markdown(f"## **{current_patient}**")
-    st.caption(f"Quedan **{len(st.session_state.patient_queue)}** paciente(s) en la fila.")
+    
+    call_num_display = st.session_state.patient_call_count
+    if call_num_display > 0:
+        st.caption(f"Veces llamado: **{call_num_display}** | Pacientes restantes en fila: **{len(st.session_state.patient_queue)}**")
+    else:
+        st.caption(f"Pacientes restantes en fila: **{len(st.session_state.patient_queue)}**")
 
     col1, col2 = st.columns(2)
 
     with col1:
         if st.button("📢 Llamar Paciente Actual", use_container_width=True):
-            voice_type = "female" if st.session_state.voice_call_count % 2 == 0 else "male"
-            st.session_state.audio_bytes = generate_patient_voice(current_patient, office_number, voice_type)
-            st.session_state.voice_call_count += 1
-            st.session_state.last_action_msg = f"Llamando a {current_patient} ({voice_type}, consultorio {office_number})"
+            st.session_state.patient_call_count += 1
+            st.session_state.audio_bytes = generate_patient_voice(
+                current_patient, 
+                office_number, 
+                st.session_state.patient_call_count
+            )
+            
+            tag = " (ÚLTIMO LLAMADO)" if st.session_state.patient_call_count >= 3 else ""
+            st.session_state.last_action_msg = f"Llamando a {current_patient}{tag} - Llamado #{st.session_state.patient_call_count}"
 
     with col2:
         if st.button("➡️ Siguiente Paciente en Fila", type="secondary", use_container_width=True):
             completed_patient = st.session_state.patient_queue.pop(0)
-            st.session_state.voice_call_count = 0
+            st.session_state.patient_call_count = 0  # Reiniciar contador para el nuevo paciente
             st.session_state.audio_bytes = None
             
             if st.session_state.patient_queue:
@@ -82,6 +103,7 @@ if st.session_state.patient_queue:
                 st.session_state.last_action_msg = "🎉 Todos los pacientes han sido llamados."
             st.rerun()
 
+    # Reproducción de audio
     if st.session_state.audio_bytes:
         st.audio(st.session_state.audio_bytes, format="audio/mp3", autoplay=True)
 
