@@ -1,2 +1,3 @@
-gTTS
 streamlit
+edge-tts
+asyncio
