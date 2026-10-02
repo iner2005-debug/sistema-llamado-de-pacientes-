@@ -2,7 +2,7 @@ import io
 import streamlit as st
 from gtts import gTTS
 
-# --- Configuración de página ---
+# --- Configuración de la página ---
 st.set_page_config(
     page_title="Sistema de Llamado de Pacientes", 
     page_icon="🏥", 
@@ -19,11 +19,8 @@ if "last_action_msg" not in st.session_state:
 if "audio_bytes" not in st.session_state:
     st.session_state.audio_bytes = None
 
-# --- Función para generar audio MP3 (Acento Latino / Colombiano) ---
+# --- Función para generar audio en Español Colombiano/Latino ---
 def generate_patient_voice(text):
-    """
-    Genera el audio en bytes usando gTTS con tld='com.co' (Español Colombia / Latino).
-    """
     try:
         tts = gTTS(text=text, lang='es', tld='com.co')
         fp = io.BytesIO()
@@ -31,7 +28,7 @@ def generate_patient_voice(text):
         fp.seek(0)
         return fp.read()
     except Exception as e:
-        st.error(f"Error generando el audio: {e}")
+        st.error(f"Error generando audio: {e}")
         return None
 
 # --- Interfaz de Usuario ---
@@ -58,7 +55,7 @@ with st.sidebar:
             st.session_state.patient_queue = []
             st.session_state.last_action_msg = "⚠️ Por favor, ingresa al menos un paciente."
 
-# Mensaje de estado
+# Mensajes de notificación
 if st.session_state.last_action_msg:
     st.info(st.session_state.last_action_msg)
 
@@ -70,13 +67,12 @@ if st.session_state.patient_queue:
     st.markdown(f"# **{current_patient}**")
     
     call_num_display = st.session_state.patient_call_count
-    st.caption(f"Veces llamado: **{call_num_display}** | Pacientes restantes en fila: **{len(st.session_state.patient_queue)}**")
+    st.caption(f"Veces llamado: **{call_num_display}** | Restantes en fila: **{len(st.session_state.patient_queue)}**")
 
-    # Botón 1: Llamar Paciente Actual
+    # Botón 1: Llamar Paciente
     if st.button("📢 Llamar Paciente Actual", type="primary", use_container_width=True):
         st.session_state.patient_call_count += 1
         
-        # Mensaje según el número de llamado
         if st.session_state.patient_call_count >= 3:
             phrase = f"Último llamado. Paciente {current_patient}, por favor acérquese al consultorio número {office_number}."
             tag = " (ÚLTIMO LLAMADO)"
@@ -87,7 +83,7 @@ if st.session_state.patient_queue:
         st.session_state.audio_bytes = generate_patient_voice(phrase)
         st.session_state.last_action_msg = f"Llamando a {current_patient}{tag} - Llamado #{st.session_state.patient_call_count}"
 
-    # Botón 2: Siguiente Paciente en Fila
+    # Botón 2: Siguiente Paciente
     if st.button("➡️ Siguiente Paciente en Fila", type="secondary", use_container_width=True):
         completed_patient = st.session_state.patient_queue.pop(0)
         st.session_state.patient_call_count = 0
@@ -99,7 +95,7 @@ if st.session_state.patient_queue:
             st.session_state.last_action_msg = "🎉 Todos los pacientes han sido llamados."
         st.rerun()
 
-    # Reproductor oficial de Streamlit (Garantiza sonido y evita bloqueos)
+    # Reproducción de audio estable
     if st.session_state.audio_bytes:
         st.audio(st.session_state.audio_bytes, format="audio/mp3", autoplay=True)
 
