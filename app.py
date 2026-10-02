@@ -1,7 +1,5 @@
 import io
-import base64
 import streamlit as st
-import streamlit.components.v1 as components
 from gtts import gTTS
 
 # --- Configuración de página ---
@@ -14,40 +12,27 @@ st.set_page_config(
 # --- Inicialización del Estado de la Sesión ---
 if "patient_queue" not in st.session_state:
     st.session_state.patient_queue = []
-if "voice_call_count" not in st.session_state:
-    st.session_state.voice_call_count = 0
 if "patient_call_count" not in st.session_state:
     st.session_state.patient_call_count = 0
 if "last_action_msg" not in st.session_state:
     st.session_state.last_action_msg = ""
-if "audio_html" not in st.session_state:
-    st.session_state.audio_html = ""
+if "audio_bytes" not in st.session_state:
+    st.session_state.audio_bytes = None
 
-# --- Función para generar audio MP3 con acento latino/colombiano ---
-def generate_audio_html(text):
+# --- Función para generar audio MP3 (Acento Latino / Colombiano) ---
+def generate_patient_voice(text):
     """
-    Genera el audio usando gTTS con tld='com.co' (Español Colombia/Latino).
-    Retorna un reproductor HTML5 codificado en Base64 con autorreproducción habilitada.
+    Genera el audio en bytes usando gTTS con tld='com.co' (Español Colombia / Latino).
     """
     try:
         tts = gTTS(text=text, lang='es', tld='com.co')
         fp = io.BytesIO()
         tts.write_to_fp(fp)
         fp.seek(0)
-        
-        # Convertir audio a Base64
-        audio_b64 = base64.b64encode(fp.read()).decode('utf-8')
-        
-        # Generar etiqueta HTML5 de audio invisible con reproducción automática
-        html = f"""
-            <audio autoplay style="display:none;">
-                <source src="data:audio/mp3;base64,{audio_b64}" type="audio/mp3">
-            </audio>
-        """
-        return html
+        return fp.read()
     except Exception as e:
         st.error(f"Error generando el audio: {e}")
-        return ""
+        return None
 
 # --- Interfaz de Usuario ---
 st.title("🏥 Sistema de Llamado")
@@ -66,9 +51,8 @@ with st.sidebar:
         names = [line.strip() for line in patient_list_raw.split('\n') if line.strip()]
         if names:
             st.session_state.patient_queue = names
-            st.session_state.voice_call_count = 0
             st.session_state.patient_call_count = 0
-            st.session_state.audio_html = ""
+            st.session_state.audio_bytes = None
             st.session_state.last_action_msg = f"✅ Lista cargada ({len(names)} pacientes)."
         else:
             st.session_state.patient_queue = []
@@ -100,14 +84,14 @@ if st.session_state.patient_queue:
             phrase = f"Paciente {current_patient}, por favor acérquese al consultorio número {office_number}."
             tag = ""
             
-        st.session_state.audio_html = generate_audio_html(phrase)
+        st.session_state.audio_bytes = generate_patient_voice(phrase)
         st.session_state.last_action_msg = f"Llamando a {current_patient}{tag} - Llamado #{st.session_state.patient_call_count}"
 
     # Botón 2: Siguiente Paciente en Fila
     if st.button("➡️ Siguiente Paciente en Fila", type="secondary", use_container_width=True):
         completed_patient = st.session_state.patient_queue.pop(0)
         st.session_state.patient_call_count = 0
-        st.session_state.audio_html = ""
+        st.session_state.audio_bytes = None
         
         if st.session_state.patient_queue:
             st.session_state.last_action_msg = f"Atendido: {completed_patient}. Siguiente: {st.session_state.patient_queue[0]}"
@@ -115,9 +99,9 @@ if st.session_state.patient_queue:
             st.session_state.last_action_msg = "🎉 Todos los pacientes han sido llamados."
         st.rerun()
 
-    # Reproducción del audio usando el componente correcto de Streamlit
-    if st.session_state.audio_html:
-        components.html(st.session_state.audio_html, height=0, width=0)
+    # Reproductor oficial de Streamlit (Garantiza sonido y evita bloqueos)
+    if st.session_state.audio_bytes:
+        st.audio(st.session_state.audio_bytes, format="audio/mp3", autoplay=True)
 
 else:
     st.warning("No hay pacientes en la cola. Carga una lista desde el menú lateral para iniciar.")
