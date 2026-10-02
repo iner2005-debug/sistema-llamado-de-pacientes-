@@ -1,6 +1,7 @@
 import io
 import base64
 import streamlit as st
+import streamlit.components.v1 as components
 from gtts import gTTS
 
 # --- Configuración de página ---
@@ -26,7 +27,7 @@ if "audio_html" not in st.session_state:
 def generate_audio_html(text):
     """
     Genera el audio usando gTTS con tld='com.co' (Español Colombia/Latino).
-    Retorna un tag HTML <audio> codificado en base64 para forzar la reproducción automática en móviles.
+    Retorna un reproductor HTML5 codificado en Base64 con autorreproducción habilitada.
     """
     try:
         tts = gTTS(text=text, lang='es', tld='com.co')
@@ -34,10 +35,10 @@ def generate_audio_html(text):
         tts.write_to_fp(fp)
         fp.seek(0)
         
-        # Convertir a Base64
+        # Convertir audio a Base64
         audio_b64 = base64.b64encode(fp.read()).decode('utf-8')
         
-        # HTML5 nativo para garantizar sonido en móviles
+        # Generar etiqueta HTML5 de audio invisible con reproducción automática
         html = f"""
             <audio autoplay style="display:none;">
                 <source src="data:audio/mp3;base64,{audio_b64}" type="audio/mp3">
@@ -102,7 +103,7 @@ if st.session_state.patient_queue:
         st.session_state.audio_html = generate_audio_html(phrase)
         st.session_state.last_action_msg = f"Llamando a {current_patient}{tag} - Llamado #{st.session_state.patient_call_count}"
 
-    # Botón 2: Siguiente Paciente
+    # Botón 2: Siguiente Paciente en Fila
     if st.button("➡️ Siguiente Paciente en Fila", type="secondary", use_container_width=True):
         completed_patient = st.session_state.patient_queue.pop(0)
         st.session_state.patient_call_count = 0
@@ -114,9 +115,9 @@ if st.session_state.patient_queue:
             st.session_state.last_action_msg = "🎉 Todos los pacientes han sido llamados."
         st.rerun()
 
-    # Inyección del componente de audio MP3
+    # Reproducción del audio usando el componente correcto de Streamlit
     if st.session_state.audio_html:
-        st.components.v1.html(st.session_state.audio_html, height=0, width=0)
+        components.html(st.session_state.audio_html, height=0, width=0)
 
 else:
     st.warning("No hay pacientes en la cola. Carga una lista desde el menú lateral para iniciar.")
